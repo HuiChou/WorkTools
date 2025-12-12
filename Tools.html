@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tool</title>
+    <link rel="icon" type="image/jpg" href="./favicon.jpg">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- 僅保留指定的字體以優化載入速度 -->
+    <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400;500&family=M+PLUS+1p:wght@300;400;500&family=Noto+Serif+JP:wght@300;400;600&family=Shippori+Mincho:wght@400;500;600&family=Zen+Maru+Gothic:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <!-- 自定義樣式與 Tailwind 設定 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        muji: {
+                            bg: 'var(--bg-color)',
+                            card: 'var(--card-color)',
+                            text: 'var(--text-color)',
+                            sub: 'var(--sub-color)',
+                            line: 'var(--line-color)',
+                            accent: 'var(--accent-color)',      // 活躍狀態背景色
+                            'accent-text': 'var(--accent-text)', // 活躍狀態文字色
+                            input: 'var(--input-bg)',
+                        }
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 預設變數 (無印灰) - React 會動態覆寫這些 */
+        :root {
+            --bg-color: #f7f7f7;
+            --card-color: #ffffff;
+            --text-color: #4a4a4a;
+            --sub-color: #9ca3af;
+            --line-color: #e5e5e5;
+            --accent-color: #4a4a4a; 
+            --accent-text: #ffffff;
+            --input-bg: #f5f5f5;
+            --font-current: "Zen Maru Gothic"; 
+        }
+
+        body {
+            background-color: var(--bg-color);
+            margin: 0;
+            overflow: hidden;
+            color: var(--text-color);
+            font-family: var(--font-current), sans-serif;
+            transition: background-color 0.5s ease, color 0.3s ease;
+        }
+
+        /* 簡單的淡入動畫 */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+        .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        /* 滾動條美化 */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--sub-color); border-radius: 10px; opacity: 0.5; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-color); }
+        
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        .select-wrapper::after {
+            content: "▼"; font-size: 0.7rem; position: absolute; right: 1rem; top: 50%; 
+            transform: translateY(-50%); color: var(--sub-color); pointer-events: none;
+        }
+
+        /* 主題切換按鈕樣式 */
+        .theme-dot { transition: transform 0.2s; cursor: pointer; }
+        .theme-dot:hover { transform: scale(1.2); }
+        .theme-active { ring-width: 2px; ring-offset-width: 2px; --tw-ring-color: var(--text-color); }
+        
+        /* 深色模式下的 Ring Color 修正 */
+        body[data-theme='midnight'] .theme-active { --tw-ring-color: #ffffff; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- 全域設定：字體與主題 ---
+        const FONT_OPTIONS = [
+            { id: '"Zen Maru Gothic"', label: '潤圓體 (圓潤)' }, // 使用 Zen Maru Gothic 作為潤圓體替代
+            { id: '"Noto Serif JP"', label: '明朝體 (優雅)' },
+            { id: '"Shippori Mincho"', label: '流麗體 (書卷)' },
+            { id: '"Kiwi Maru"', label: '奇異體 (手寫)' },
+            { id: '"M PLUS 1p"', label: '現代體 (黑體)' },
+        ];
+
+        const THEME_OPTIONS = [
+            { id: 'muji', label: '無印灰', colors: { bg: '#f7f7f7', card: '#ffffff', text: '#4a4a4a', sub: '#9ca3af', line: '#e5e5e5', accent: '#4a4a4a', accentText: '#ffffff', input: '#f5f5f5' } },
+            { id: 'matcha', label: '抹茶綠', colors: { bg: '#f2f7f4', card: '#ffffff', text: '#3f5245', sub: '#9eb5a5', line: '#e0ebe4', accent: '#5f8d75', accentText: '#ffffff', input: '#ecf2ee' } },
+            { id: 'ocean', label: '靜謐藍', colors: { bg: '#f0f4f8', card: '#ffffff', text: '#334e68', sub: '#829ab1', line: '#d9e2ec', accent: '#3e64ff', accentText: '#ffffff', input: '#e6ebf1' } },
+            { id: 'lavender', label: '薰衣草', colors: { bg: '#f5f3ff', card: '#ffffff', text: '#5b21b6', sub: '#a78bfa', line: '#ede9fe', accent: '#8b5cf6', accentText: '#ffffff', input: '#f3f4f6' } },
+        ];
+
+        // --- Icons ---
+        const Icon = ({ children, className, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>{children}</svg>
+        );
+        // Nav Icons
+        const HardDriveIcon = (p) => <Icon {...p}><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></Icon>;
+        const ClockIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+        const CalendarDaysIcon = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></Icon>;
+        const CalculatorIcon = (p) => <Icon {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></Icon>; 
+        const WifiIcon = (p) => <Icon {...p}><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></Icon>;
+        const NetworkIcon = (p) => <Icon {...p}><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></Icon>;
+        const KeyIcon = (p) => <Icon {...p}><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></Icon>;
+
+        // UI Icons
+        const MenuIcon = (p) => <Icon {...p}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></Icon>;
+        const XIcon = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+        const ArrowRightLeftIcon = (p) => <Icon {...p}><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></Icon>;
+        const CopyIcon = (p) => <Icon {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></Icon>;
+        const CheckIcon = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>;
+        const TypeIcon = (p) => <Icon {...p}><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></Icon>;
+        const PaletteIcon = (p) => <Icon {...p}><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></Icon>;
+        const RefreshCwIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></Icon>;
+
+        // M365 Icons
+        const Trash2Icon = (p) => <Icon {...p}><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></Icon>;
+        const PlusIcon = (p) => <Icon {...p}><path d="M5 12h14M12 5v14" /></Icon>;
+        const DownloadIcon = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></Icon>;
+        const SearchIcon = (p) => <Icon {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Icon>;
+        const FileSpreadsheetIcon = (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><path d="M8 13h2" /><path d="M8 17h2" /><path d="M14 13h2" /><path d="M14 17h2" /></Icon>;
+        const UploadCloudIcon = (p) => <Icon {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m16 16-4-4-4 4" /></Icon>;
+        const AlertCircleIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></Icon>; // Re-added for M365
+
+        // --- Helper Function ---
+        const calculateDaysDiff = (start, end) => {
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return 0;
+            const diffTime = endDate.getTime() - startDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            return diffDays; 
+        };
+        
+        // M365 專用，通常會加1天(包含當天)
+        const calculateDaysForLicense = (start, end) => {
+            const days = calculateDaysDiff(start, end);
+            return days >= 0 ? days + 1 : 0;
+        };
+
+        const calculatePrice = (originalPrice, days) => {
+            if (!originalPrice || !days) return 0;
+            const price = parseFloat(originalPrice);
+            if (isNaN(price)) return 0;
+            return Math.ceil((price / 365) * days);
+        };
+
+        const DEFAULT_DATA = [
+            { category: "範例分類", plan: "範例方案", name: "請上傳 Excel (需有 'M365訂閱' 分頁)", price: 0 }
+        ];
+
+        // --- 組件: 通用 Select ---
+        const SelectField = ({ label, value, onChange, options, disabled, placeholder }) => (
+            <div className="space-y-2">
+                {label && <label className="text-xs font-bold text-muji-sub tracking-wider ml-1 uppercase">{label}</label>}
+                <div className="relative select-wrapper">
+                    <select
+                        value={value}
+                        onChange={onChange}
+                        disabled={disabled}
+                        className="w-full appearance-none bg-muji-input border-0 rounded-lg px-4 py-3 text-muji-text text-sm focus:ring-2 focus:ring-muji-line focus:outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {placeholder && <option value="" disabled>{placeholder}</option>}
+                        {options.map((opt) => 
+                            typeof opt === 'object' ? 
+                            <option key={opt.id || opt.value} value={opt.value}>{opt.label}</option> : 
+                            <option key={opt} value={opt}>{opt}</option>
+                        )}
+                    </select>
+                </div>
+            </div>
+        );
+
+        // --- 功能 1: 儲存單位轉換 ---
+        const UnitConverter = () => {
+            const [inputValue, setInputValue] = useState(1);
+            const [selectedUnit, setSelectedUnit] = useState('GB');
+            const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            
+            const baseBytes = inputValue * Math.pow(1024, UNITS.indexOf(selectedUnit));
+
+            const formatNumber = (num) => {
+                if (num === 0) return '0';
+                if (num < 0.000001 || num >= 1e15) return num.toExponential(4);
+                const decimals = num % 1 === 0 ? 0 : num < 1 ? 6 : 2;
+                return num.toLocaleString('zh-TW', { maximumFractionDigits: decimals });
+            };
+
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        <div className="flex flex-col md:flex-row gap-6 items-center">
+                            <div className="flex-1 w-full">
+                                <label className="text-xs font-bold text-muji-sub mb-2 block tracking-wider uppercase">數值輸入</label>
+                                <input type="number" value={inputValue} onChange={(e) => setInputValue(Number(e.target.value))} className="w-full bg-muji-input text-muji-text text-4xl font-light p-4 rounded-lg outline-none transition-all border-b-2 border-transparent focus:border-muji-sub" />
+                            </div>
+                            <div className="text-muji-sub hidden md:block pt-6"><ArrowRightLeftIcon className="w-5 h-5" /></div>
+                            <div className="w-full md:w-48">
+                                <SelectField label="單位選擇" value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} options={UNITS} />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {UNITS.map((unit, index) => {
+                            const val = baseBytes / Math.pow(1024, index);
+                            const isSource = unit === selectedUnit;
+                            return (
+                                <div key={unit} className={`relative rounded-lg p-6 border transition-all duration-300 ${isSource ? 'bg-muji-accent text-muji-accent-text border-muji-accent shadow-lg' : 'bg-muji-card text-muji-text border-transparent hover:border-muji-line hover:shadow-soft'}`}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className={`text-xs font-bold tracking-widest ${isSource ? 'opacity-80' : 'text-muji-sub'}`}>{unit}</span>
+                                    </div>
+                                    <div className="text-xl md:text-2xl font-mono truncate" title={val}>{formatNumber(val)}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 功能 2: 時間換算 ---
+        const TimeConverter = () => {
+            const [hours, setHours] = useState(1);
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        <div className="mb-8">
+                            <label className="text-xs font-bold text-muji-sub mb-2 block tracking-wider uppercase">輸入小時 (Hours)</label>
+                            <input type="number" value={hours} onChange={(e) => setHours(Number(e.target.value))} className="w-full bg-muji-input text-muji-text text-4xl font-light p-4 rounded-lg outline-none transition-all border-b-2 border-transparent focus:border-muji-sub"/>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                            {['分鐘', '秒數', '毫秒'].map((label, i) => {
+                                const val = i === 0 ? hours * 60 : i === 1 ? hours * 3600 : hours * 3600000;
+                                return (
+                                    <div key={label} className="border-t pt-4 border-muji-line">
+                                        <div className="text-muji-sub text-xs font-bold mb-1 tracking-wider">{label}</div>
+                                        <div className="text-2xl text-muji-text font-mono">{val.toLocaleString()}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 功能 3: 日期計算 ---
+        const DateCalculator = () => {
+            const [mode, setMode] = useState('subtract');
+            const [date1, setDate1] = useState(new Date().toISOString().slice(0, 10));
+            const [date2, setDate2] = useState(new Date().toISOString().slice(0, 10));
+            const [diffResult, setDiffResult] = useState({ totalDays: 0 });
+
+            const [baseDate, setBaseDate] = useState(new Date().toISOString().slice(0, 10));
+            const [operation, setOperation] = useState('add');
+            const [amount, setAmount] = useState(1);
+            const [unit, setUnit] = useState('days');
+            const [calcResult, setCalcResult] = useState('');
+
+            useEffect(() => {
+                const d1 = new Date(date1); const d2 = new Date(date2);
+                if (!isNaN(d1) && !isNaN(d2)) {
+                    setDiffResult({ totalDays: Math.ceil(Math.abs(d2 - d1) / (86400000)) });
+                }
+            }, [date1, date2]);
+
+            useEffect(() => {
+                const base = new Date(baseDate);
+                if (!isNaN(base)) {
+                    const res = new Date(base);
+                    const val = operation === 'add' ? parseInt(amount) : -parseInt(amount);
+                    if (unit === 'days') res.setDate(base.getDate() + val);
+                    if (unit === 'weeks') res.setDate(base.getDate() + val * 7);
+                    if (unit === 'months') res.setMonth(base.getMonth() + val);
+                    if (unit === 'years') res.setFullYear(base.getFullYear() + val);
+                    setCalcResult(res.toISOString().slice(0, 10));
+                }
+            }, [baseDate, operation, amount, unit]);
+
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="flex justify-center mb-4 gap-2">
+                         {['subtract:日期相減', 'calculate:日期推算'].map(opt => {
+                             const [val, label] = opt.split(':');
+                             return (
+                                 <button key={val} onClick={() => setMode(val)} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${mode === val ? 'bg-muji-accent text-muji-accent-text shadow-sm' : 'text-muji-sub hover:bg-muji-line/50'}`}>{label}</button>
+                             )
+                         })}
+                    </div>
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        {mode === 'subtract' ? (
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-2 gap-8">
+                                    <div className="space-y-2"><label className="text-xs font-bold text-muji-sub uppercase">開始日期</label><input type="date" value={date1} onChange={(e) => setDate1(e.target.value)} className="w-full bg-muji-input rounded-lg px-4 py-3 text-muji-text outline-none" /></div>
+                                    <div className="space-y-2"><label className="text-xs font-bold text-muji-sub uppercase">結束日期</label><input type="date" value={date2} onChange={(e) => setDate2(e.target.value)} className="w-full bg-muji-input rounded-lg px-4 py-3 text-muji-text outline-none" /></div>
+                                </div>
+                                <div className="text-center pt-4 border-t border-dashed border-muji-line">
+                                    <div className="text-xs text-muji-sub font-bold mb-1">相差天數</div>
+                                    <div className="text-5xl font-mono text-muji-text font-light">{diffResult.totalDays} <span className="text-sm text-muji-sub">天</span></div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-4 gap-4 items-end">
+                                    <div className="col-span-1 space-y-2"><label className="text-xs font-bold text-muji-sub uppercase">基準日</label><input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} className="w-full bg-muji-input rounded-lg px-4 py-3 text-muji-text outline-none" /></div>
+                                    <div className="col-span-1"><SelectField value={operation} onChange={(e) => setOperation(e.target.value)} options={[{value:'add',label:'加上'}, {value:'sub',label:'減去'}]} /></div>
+                                    <div className="col-span-1"><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-muji-input rounded-lg px-4 py-3 text-center text-muji-text outline-none" /></div>
+                                    <div className="col-span-1"><SelectField value={unit} onChange={(e) => setUnit(e.target.value)} options={[{value:'days',label:'天'}, {value:'weeks',label:'週'}, {value:'months',label:'月'}, {value:'years',label:'年'}]} /></div>
+                                </div>
+                                <div className="bg-muji-accent text-muji-accent-text rounded-xl p-8 text-center shadow-lg">
+                                     <div className="text-xs opacity-70 font-bold mb-2 uppercase">推算結果</div>
+                                     <div className="text-4xl font-mono font-light tracking-wider">{calcResult}</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 功能 4: 資料傳輸時間計算器 (New) ---
+        const BandwidthCalculator = () => {
+            const [fileSize, setFileSize] = useState(1);
+            const [sizeUnit, setSizeUnit] = useState('GB');
+            const [speed, setSpeed] = useState(100);
+            const [speedUnit, setSpeedUnit] = useState('Mbps');
+            
+            const [result, setResult] = useState('');
+
+            useEffect(() => {
+                // Convert size to bits
+                const sizePower = ['MB', 'GB', 'TB'].indexOf(sizeUnit);
+                const sizeBits = fileSize * Math.pow(1024, sizePower) * 8 * 1024 * 1024; // MB base
+
+                // Convert speed to bits per second
+                const speedMulti = speedUnit === 'Gbps' ? 1000 : 1;
+                const speedBps = speed * speedMulti * 1000 * 1000;
+
+                if (speedBps > 0) {
+                    const seconds = sizeBits / speedBps;
+                    const d = Math.floor(seconds / (3600*24));
+                    const h = Math.floor(seconds % (3600*24) / 3600);
+                    const m = Math.floor(seconds % 3600 / 60);
+                    const s = Math.floor(seconds % 60);
+                    
+                    let timeStr = [];
+                    if (d > 0) timeStr.push(`${d}天`);
+                    if (h > 0) timeStr.push(`${h}時`);
+                    if (m > 0) timeStr.push(`${m}分`);
+                    timeStr.push(`${s}秒`);
+                    setResult(timeStr.join(' '));
+                }
+            }, [fileSize, sizeUnit, speed, speedUnit]);
+
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <label className="text-xs font-bold text-muji-sub uppercase">檔案大小</label>
+                                <div className="flex gap-2">
+                                    <input type="number" value={fileSize} onChange={(e) => setFileSize(e.target.value)} className="flex-1 bg-muji-input rounded-lg px-4 py-3 text-muji-text outline-none" />
+                                    <div className="w-24"><SelectField value={sizeUnit} onChange={(e) => setSizeUnit(e.target.value)} options={['MB', 'GB', 'TB']} /></div>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                <label className="text-xs font-bold text-muji-sub uppercase">網路速度</label>
+                                <div className="flex gap-2">
+                                    <input type="number" value={speed} onChange={(e) => setSpeed(e.target.value)} className="flex-1 bg-muji-input rounded-lg px-4 py-3 text-muji-text outline-none" />
+                                    <div className="w-24"><SelectField value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value)} options={['Mbps', 'Gbps']} /></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-8 pt-6 border-t border-dashed border-muji-line text-center">
+                            <div className="text-xs text-muji-sub font-bold mb-2 uppercase">預估傳輸時間</div>
+                            <div className="text-4xl font-mono text-muji-text font-light">{result || '0秒'}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 功能 5: IP 子網掩碼計算器 (New) ---
+        const IpCalculator = () => {
+            const [ip, setIp] = useState('192.168.1.1');
+            const [cidr, setCidr] = useState(24);
+            const [info, setInfo] = useState(null);
+
+            useEffect(() => {
+                try {
+                    const ipParts = ip.split('.');
+                    if (ipParts.length !== 4) return;
+                    
+                    const ipNum = (parseInt(ipParts[0]) << 24) | (parseInt(ipParts[1]) << 16) | (parseInt(ipParts[2]) << 8) | parseInt(ipParts[3]);
+                    const mask = 0xffffffff << (32 - cidr);
+                    
+                    const network = ipNum & mask;
+                    const broadcast = network | (~mask);
+                    const first = network + 1;
+                    const last = broadcast - 1;
+                    const hosts = Math.pow(2, 32 - cidr) - 2;
+
+                    const num2ip = (num) => {
+                        return [
+                            (num >>> 24) & 0xff,
+                            (num >>> 16) & 0xff,
+                            (num >>> 8) & 0xff,
+                            num & 0xff
+                        ].join('.');
+                    };
+
+                    setInfo({
+                        mask: num2ip(mask),
+                        network: num2ip(network),
+                        broadcast: num2ip(broadcast),
+                        first: num2ip(first),
+                        last: num2ip(last),
+                        hosts: hosts > 0 ? hosts.toLocaleString() : 0
+                    });
+                } catch (e) {
+                    setInfo(null);
+                }
+            }, [ip, cidr]);
+
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        <div className="grid grid-cols-3 gap-4 mb-8">
+                            <div className="col-span-2 space-y-2">
+                                <label className="text-xs font-bold text-muji-sub uppercase">IP 位址</label>
+                                <input type="text" value={ip} onChange={(e) => setIp(e.target.value)} className="w-full bg-muji-input rounded-lg px-4 py-3 text-muji-text font-mono outline-none" placeholder="e.g. 192.168.1.1" />
+                            </div>
+                            <div className="space-y-2">
+                                <SelectField label="CIDR" value={cidr} onChange={(e) => setCidr(Number(e.target.value))} options={Array.from({length:31}, (_, i) => ({value: i+1, label: `/${i+1}`}))} />
+                            </div>
+                        </div>
+
+                        {info && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {[
+                                    {label: '子網掩碼 (Netmask)', val: info.mask},
+                                    {label: '可用主機數 (Hosts)', val: info.hosts},
+                                    {label: '網絡位址 (Network)', val: info.network},
+                                    {label: '廣播位址 (Broadcast)', val: info.broadcast},
+                                    {label: '起始 IP (First IP)', val: info.first},
+                                    {label: '結束 IP (Last IP)', val: info.last},
+                                ].map(item => (
+                                    <div key={item.label} className="bg-muji-bg rounded-lg p-4 border border-muji-line">
+                                        <div className="text-[10px] text-muji-sub font-bold uppercase mb-1">{item.label}</div>
+                                        <div className="text-lg font-mono text-muji-text">{item.val}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 功能 6: 安全密碼產生器 (New) ---
+        const PasswordGenerator = () => {
+            const [length, setLength] = useState(16);
+            const [includeUpper, setIncludeUpper] = useState(true);
+            const [includeLower, setIncludeLower] = useState(true);
+            const [includeNum, setIncludeNum] = useState(true);
+            const [includeSym, setIncludeSym] = useState(true);
+            const [password, setPassword] = useState('');
+
+            const generate = () => {
+                const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const lower = "abcdefghijklmnopqrstuvwxyz";
+                const num = "0123456789";
+                const sym = "!@#$%^&*()_+~`|}{[]:;?><,./-=";
+                
+                let chars = "";
+                if (includeUpper) chars += upper;
+                if (includeLower) chars += lower;
+                if (includeNum) chars += num;
+                if (includeSym) chars += sym;
+
+                if (!chars) return;
+
+                let pass = "";
+                for (let i = 0; i < length; i++) {
+                    pass += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                setPassword(pass);
+            };
+
+            useEffect(generate, [length, includeUpper, includeLower, includeNum, includeSym]);
+
+            return (
+                <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+                    <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
+                        <div className="bg-muji-accent text-muji-accent-text rounded-xl p-6 text-center shadow-lg mb-8 relative group cursor-pointer" onClick={() => {navigator.clipboard.writeText(password); alert('已複製！')}}>
+                             <div className="text-3xl font-mono break-all font-light">{password}</div>
+                             <div className="text-xs opacity-60 mt-2">點擊複製</div>
+                             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity"><CopyIcon className="w-5 h-5"/></div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <label className="text-xs font-bold text-muji-sub uppercase">長度: {length}</label>
+                                </div>
+                                <input type="range" min="8" max="64" value={length} onChange={(e) => setLength(Number(e.target.value))} className="w-full h-2 bg-muji-line rounded-lg appearance-none cursor-pointer accent-muji-accent" />
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {[{l:'A-Z', v:includeUpper, s:setIncludeUpper}, {l:'a-z', v:includeLower, s:setIncludeLower}, {l:'0-9', v:includeNum, s:setIncludeNum}, {l:'@#$', v:includeSym, s:setIncludeSym}].map(opt => (
+                                    <label key={opt.l} className="flex items-center gap-3 p-3 bg-muji-input rounded-lg cursor-pointer hover:bg-muji-line/50 transition-colors">
+                                        <input type="checkbox" checked={opt.v} onChange={(e) => opt.s(e.target.checked)} className="w-5 h-5 accent-muji-accent rounded" />
+                                        <span className="text-sm font-bold text-muji-text">{opt.l}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            
+                            <button onClick={generate} className="w-full py-4 bg-muji-text text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                                <RefreshCwIcon className="w-5 h-5" /> 重新產生
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- M365 計算器 (完整修復版) ---
+        const M365Calculator = () => {
+            const [database, setDatabase] = useState(DEFAULT_DATA); 
+            const [items, setItems] = useState([]); 
+            
+            const [selectedCategory, setSelectedCategory] = useState('');
+            const [selectedPlan, setSelectedPlan] = useState('');
+            const [selectedProduct, setSelectedProduct] = useState('');
+            const [searchKeyword, setSearchKeyword] = useState('');
+            
+            const [price, setPrice] = useState('');
+            const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+            const [endDate, setEndDate] = useState('');
+
+            const [fileName, setFileName] = useState('');
+            const fileInputRef = useRef(null);
+
+            // --- Derived States ---
+            const categories = useMemo(() => {
+                return [...new Set(database.map(d => d.category))].filter(Boolean);
+            }, [database]);
+
+            const availablePlans = useMemo(() => {
+                if (!selectedCategory) return [];
+                return [...new Set(database.filter(d => d.category === selectedCategory).map(d => d.plan))].filter(Boolean);
+            }, [selectedCategory, database]);
+
+            const availableProducts = useMemo(() => {
+                if (!selectedCategory || !selectedPlan) return [];
+                let filtered = database.filter(d => d.category === selectedCategory && d.plan === selectedPlan);
+                if (searchKeyword.trim()) {
+                    const lowerKeyword = searchKeyword.toLowerCase();
+                    filtered = filtered.filter(d => d.name.toLowerCase().includes(lowerKeyword));
+                }
+                return filtered.map(d => d);
+            }, [selectedCategory, selectedPlan, database, searchKeyword]);
+
+            // --- Handlers ---
+            const handleCategoryChange = (e) => {
+                setSelectedCategory(e.target.value);
+                setSelectedPlan('');
+                setSelectedProduct('');
+                setSearchKeyword('');
+                setPrice('');
+            };
+
+            const handlePlanChange = (e) => {
+                setSelectedPlan(e.target.value);
+                setSelectedProduct('');
+                setSearchKeyword('');
+                setPrice('');
+            };
+
+            const handleProductChange = (e) => {
+                const productName = e.target.value;
+                setSelectedProduct(productName);
+                const foundItem = database.find(d => 
+                    d.category === selectedCategory && 
+                    d.plan === selectedPlan && 
+                    d.name === productName
+                );
+                if (foundItem) setPrice(foundItem.price);
+            };
+
+            const processFile = (file) => {
+                if (!window.XLSX) {
+                    alert("Excel 核心尚未載入，請稍後再試。");
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = window.XLSX.read(data, { type: 'array' });
+                        
+                        const targetSheetName = "M365訂閱";
+                        let sheetName = workbook.SheetNames.includes(targetSheetName) ? targetSheetName : workbook.SheetNames[0];
+
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        const parsedData = [];
+                        
+                        for (let i = 1; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            if (!row || row.length === 0) continue;
+
+                            const category = row[1] ? String(row[1]).trim() : ''; 
+                            const plan = row[2] ? String(row[2]).trim() : '';     
+                            const name = row[6] ? String(row[6]).trim() : '';     
+                            let rawPrice = row[7];                                
+
+                            let price = 0;
+                            if (typeof rawPrice === 'number') {
+                                price = rawPrice;
+                            } else if (typeof rawPrice === 'string') {
+                                price = parseFloat(rawPrice.replace(/[$,]/g, '').trim());
+                            }
+
+                            if (name && name !== "品名" && !isNaN(price)) {
+                                parsedData.push({ 
+                                    category: category || "未分類", 
+                                    plan: plan || "預設方案",       
+                                    name, 
+                                    price
+                                });
+                            }
+                        }
+
+                        if (parsedData.length > 0) {
+                            setDatabase(parsedData);
+                            setFileName(file.name);
+                            setSelectedCategory('');
+                            setSelectedPlan('');
+                            setSelectedProduct('');
+                            setSearchKeyword('');
+                            setPrice('');
+                            alert(`成功匯入 ${parsedData.length} 筆資料 (工作表: ${sheetName})`);
+                        } else {
+                            alert(`工作表 "${sheetName}" 無有效資料`);
+                        }
+                    } catch (error) {
+                        alert("檔案解析錯誤: " + error.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            };
+
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                if (file) processFile(file);
+            };
+
+            const handleAddItem = (e) => {
+                e.preventDefault();
+                if (!selectedProduct || !price || !startDate || !endDate) return;
+
+                const days = calculateDaysForLicense(startDate, endDate);
+                const suggestedPrice = calculatePrice(price, days);
+
+                const newItem = {
+                    id: Date.now(),
+                    category: selectedCategory,
+                    plan: selectedPlan,
+                    name: selectedProduct,
+                    originalPrice: parseFloat(price),
+                    start: startDate,
+                    end: endDate,
+                    days: days,
+                    suggestedPrice: suggestedPrice
+                };
+
+                setItems([newItem, ...items]);
+                setSelectedProduct(''); 
+                setSearchKeyword(''); 
+                setPrice(''); 
+            };
+
+            const handleDelete = (id) => setItems(items.filter(item => item.id !== id));
+
+            const handleExport = () => {
+                const bom = '\uFEFF';
+                const header = "分類,BillingPlan,授權名稱,授權原價,開始日期,結束日期,切齊天數,建議報價\n";
+                const csvContent = items.map(item => 
+                    `${item.category},${item.plan},${item.name},${item.originalPrice},${item.start},${item.end},${item.days},${item.suggestedPrice}`
+                ).join('\n');
+                const blob = new Blob([bom + header + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `M365報價單_${new Date().toISOString().slice(0,10)}.csv`;
+                link.click();
+            };
+
+            // JSX rendering needs to use 'muji' classes.
+            return (
+                <div className="animate-fadeIn max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* ... Left Side ... */}
+                    <div className="lg:col-span-4 space-y-6">
+                        {/* Upload */}
+                        <div className="bg-muji-card rounded-xl p-5 shadow-soft border border-muji-line">
+                            <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleFileChange} />
+                            {!fileName ? (
+                                <button onClick={() => fileInputRef.current?.click()} className="w-full group flex items-center justify-center gap-3 py-4 border border-dashed border-muji-line rounded-lg hover:bg-muji-bg transition-all">
+                                    <UploadCloudIcon className="w-5 h-5 text-muji-sub group-hover:text-muji-text" />
+                                    <span className="text-sm text-muji-sub font-medium">匯入 Excel 價目表</span>
+                                </button>
+                            ) : (
+                                <div className="flex items-center justify-between bg-muji-input rounded-lg p-3 border border-muji-line">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <FileSpreadsheetIcon className="w-5 h-5 text-muji-sub" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-xs font-medium text-muji-text truncate max-w-[150px]">{fileName}</span>
+                                            <span className="text-[10px] text-muji-sub">{database.length} 筆商品</span>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => fileInputRef.current?.click()} className="text-[10px] bg-muji-card border border-muji-line text-muji-sub px-2 py-1 rounded hover:bg-muji-bg whitespace-nowrap">更換</button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Form */}
+                        <div className="bg-muji-card rounded-xl p-6 shadow-soft border border-muji-line">
+                            <div className="flex justify-between items-center mb-6 border-b pb-2 border-muji-line">
+                                <h2 className="text-sm font-bold text-muji-sub flex items-center gap-2">
+                                    <PlusIcon className="w-4 h-4" /> 新增項目
+                                </h2>
+                            </div>
+                            
+                            <form onSubmit={handleAddItem} className="space-y-4">
+                                <SelectField label="1. 產品分類" value={selectedCategory} onChange={handleCategoryChange} options={categories} placeholder="請選擇分類..." />
+                                <SelectField label="2. 計費方案" value={selectedPlan} onChange={handlePlanChange} options={availablePlans} disabled={!selectedCategory} placeholder={selectedCategory ? "選擇方案..." : "先選分類"} />
+                                
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-muji-sub tracking-wider ml-1 uppercase">3. 授權品名</label>
+                                    <div className="grid grid-cols-12 gap-2">
+                                        <div className="col-span-12 md:col-span-5 relative">
+                                            <input type="text" value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} disabled={!selectedPlan} placeholder="搜尋..." className="w-full bg-muji-input rounded-lg pl-8 pr-2 py-3 text-muji-text text-sm focus:ring-2 focus:ring-muji-line outline-none disabled:opacity-50" />
+                                            <SearchIcon className="absolute left-2.5 top-3.5 w-4 h-4 text-muji-sub" />
+                                            {searchKeyword && <button type="button" onClick={() => setSearchKeyword('')} className="absolute right-2 top-3 text-muji-sub hover:text-muji-text"><XIcon className="w-3 h-3" /></button>}
+                                        </div>
+                                        <div className="col-span-12 md:col-span-7 relative custom-select-container">
+                                            <select value={selectedProduct} onChange={handleProductChange} disabled={!selectedPlan} className="w-full appearance-none bg-muji-input rounded-lg px-3 py-3 text-muji-text text-sm focus:ring-2 focus:ring-muji-line outline-none disabled:opacity-50 cursor-pointer">
+                                                <option value="" disabled>{selectedPlan ? (availableProducts.length === 0 ? "無項目" : "選擇產品") : "先選方案"}</option>
+                                                {availableProducts.map((prod) => <option key={prod.name} value={prod.name}>{prod.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-muji-sub tracking-wider ml-1 uppercase">授權原價 (自動)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-3 text-muji-sub">$</span>
+                                        <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" className="w-full bg-muji-input rounded-lg pl-6 pr-4 py-3 text-muji-text font-mono focus:ring-2 focus:ring-muji-line outline-none" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-muji-sub ml-1">起始日</label>
+                                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-muji-input rounded-lg px-2 py-3 text-muji-text text-xs focus:ring-2 focus:ring-muji-line outline-none" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-muji-sub ml-1">結束日</label>
+                                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-muji-input rounded-lg px-2 py-3 text-muji-text text-xs focus:ring-2 focus:ring-muji-line outline-none" />
+                                    </div>
+                                </div>
+
+                                {price && startDate && endDate && (
+                                    <div className="bg-muji-bg rounded-lg p-3 flex justify-between items-center text-sm text-muji-sub border border-muji-line">
+                                        <span className="text-xs">共 {calculateDaysForLicense(startDate, endDate)} 天</span>
+                                        <span className="font-bold font-mono text-muji-text">${calculatePrice(price, calculateDaysForLicense(startDate, endDate)).toLocaleString()}</span>
+                                    </div>
+                                )}
+
+                                <button type="submit" disabled={!selectedProduct || !price || !startDate || !endDate} className="w-full bg-muji-accent text-muji-accent-text rounded-lg py-3 font-medium shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <CheckIcon className="w-4 h-4" /> 加入清單
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    {/* Right Side List */}
+                    <div className="lg:col-span-8">
+                        <div className="bg-muji-card rounded-xl p-6 min-h-[600px] shadow-soft border border-muji-line flex flex-col h-full">
+                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-muji-line">
+                                <div>
+                                    <h2 className="text-lg font-bold text-muji-text">報價清單</h2>
+                                    <p className="text-xs text-muji-sub mt-1">共 {items.length} 筆資料</p>
+                                </div>
+                                {items.length > 0 && (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setItems([])} className="text-xs text-muji-sub hover:text-red-500 px-3 py-2 flex items-center gap-1 transition-colors"><Trash2Icon className="w-3 h-3" /> 清空</button>
+                                        <button onClick={handleExport} className="text-xs bg-muji-input text-muji-text px-4 py-2 rounded hover:bg-muji-line transition-colors flex items-center gap-2 font-medium"><DownloadIcon className="w-3 h-3" /> 匯出 CSV</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex-1 overflow-auto pr-1">
+                                {items.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-muji-sub space-y-4 opacity-50">
+                                        <SearchIcon className="w-16 h-16 opacity-20" />
+                                        <p className="font-light tracking-wider text-sm">請由左側選擇產品加入</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {/* Header Row */}
+                                        <div className="hidden md:grid grid-cols-12 text-xs text-muji-sub px-4 pb-1 font-bold tracking-wider uppercase">
+                                            <div className="col-span-4">產品資訊</div>
+                                            <div className="col-span-2 text-right">原價</div>
+                                            <div className="col-span-3 text-center">日期區間</div>
+                                            <div className="col-span-1 text-center">天數</div>
+                                            <div className="col-span-2 text-right">小計</div>
+                                        </div>
+                                        {/* Items */}
+                                        {items.map((item) => (
+                                            <div key={item.id} className="group relative bg-muji-card border border-muji-line rounded-lg p-4 md:py-3 hover:border-muji-sub hover:shadow-md transition-all grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 items-center">
+                                                <div className="col-span-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium text-muji-text text-sm truncate" title={item.name}>{item.name}</span>
+                                                        <div className="flex gap-2 mt-1">
+                                                            <span className="text-[10px] text-muji-sub bg-muji-bg px-1.5 rounded border border-muji-line">{item.category}</span>
+                                                            <span className="text-[10px] text-muji-sub bg-muji-input px-1.5 rounded">{item.plan}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="col-span-2 text-left md:text-right font-mono text-muji-sub text-xs"><span className="md:hidden mr-2">原價:</span>${item.originalPrice.toLocaleString()}</div>
+                                                <div className="col-span-3 flex flex-col items-start md:items-center justify-center text-[10px] text-muji-sub font-mono">
+                                                    <span>{item.start}</span>
+                                                    <span className="hidden md:block text-muji-line">|</span>
+                                                    <span>{item.end}</span>
+                                                </div>
+                                                <div className="col-span-1 text-left md:text-center text-xs"><span className="md:hidden text-muji-sub mr-2">天數:</span><span className="bg-muji-bg text-muji-text px-2 py-0.5 rounded font-mono">{item.days}</span></div>
+                                                <div className="col-span-2 text-left md:text-right"><span className="text-xs text-muji-sub md:hidden mr-2">小計:</span><span className="font-mono text-lg font-medium text-muji-text">${item.suggestedPrice.toLocaleString()}</span></div>
+                                                <div className="absolute top-2 right-2 md:relative md:top-auto md:right-auto md:col-span-0 md:hidden group-hover:block"><button onClick={() => handleDelete(item.id)} className="text-muji-sub hover:text-red-400 p-1 md:p-0 transition-colors"><XIcon className="w-4 h-4" /></button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {items.length > 0 && (
+                                <div className="mt-4 pt-4 border-t border-muji-line flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div className="text-xs flex items-center bg-muji-bg px-3 py-2 rounded text-muji-sub border border-muji-line">
+                                        <AlertCircleIcon className="w-3 h-3 mr-2" />
+                                        <span>公式: ceil(原價/365 * 天數)</span>
+                                    </div>
+                                    <div className="text-right flex items-baseline gap-3">
+                                        <span className="text-xs text-muji-sub font-bold uppercase">預估總金額</span>
+                                        <span className="text-3xl font-light text-muji-text font-mono">${items.reduce((acc, curr) => acc + curr.suggestedPrice, 0).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // --- 主應用程式 ---
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('storage');
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+            const [currentFont, setCurrentFont] = useState('"Zen Maru Gothic"');
+            const [currentTheme, setCurrentTheme] = useState('muji');
+
+            // 套用主題
+            useEffect(() => {
+                const theme = THEME_OPTIONS.find(t => t.id === currentTheme);
+                if (theme) {
+                    const root = document.documentElement;
+                    root.style.setProperty('--bg-color', theme.colors.bg);
+                    root.style.setProperty('--card-color', theme.colors.card);
+                    root.style.setProperty('--text-color', theme.colors.text);
+                    root.style.setProperty('--sub-color', theme.colors.sub);
+                    root.style.setProperty('--line-color', theme.colors.line);
+                    root.style.setProperty('--accent-color', theme.colors.accent);
+                    root.style.setProperty('--accent-text', theme.colors.accentText);
+                    root.style.setProperty('--input-bg', theme.colors.input);
+                    
+                    // 設定 Dark Mode 屬性 (用於特定 CSS 修正)
+                    document.body.setAttribute('data-theme', theme.id);
+                }
+            }, [currentTheme]);
+
+            // 套用字體
+            useEffect(() => {
+                document.documentElement.style.setProperty('--font-current', currentFont);
+            }, [currentFont]);
+
+            const navItems = [
+                { id: 'storage', label: '儲存單位', icon: HardDriveIcon },
+                { id: 'bandwidth', label: '網路傳輸', icon: WifiIcon }, // New
+                { id: 'ip', label: 'IP 計算', icon: NetworkIcon }, // New
+                { id: 'password', label: '密碼產生', icon: KeyIcon }, // New
+                { id: 'time', label: '時間換算', icon: ClockIcon },
+                { id: 'date', label: '日期計算', icon: CalendarDaysIcon },
+                { id: 'm365', label: 'M365 授權', icon: CalculatorIcon }, 
+            ];
+
+            return (
+                <div className="min-h-screen text-muji-text flex relative transition-all duration-300">
+                    
+                    {/* Mobile Toggle */}
+                    <button className="md:hidden fixed top-6 right-6 z-50 p-2 bg-muji-card text-muji-text shadow-sm rounded-full" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+                        {isMobileMenuOpen ? <XIcon size={24} /> : <MenuIcon size={24} />}
+                    </button>
+
+                    {/* Sidebar */}
+                    <aside className={`fixed md:relative z-40 h-screen w-52 flex flex-col bg-muji-card border-r border-muji-line transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        <div className="p-6 pb-4">
+                            <h1 className="text-xl font-bold text-muji-text tracking-tight">🧰Tool</h1>
+                            <div className="h-1 w-8 bg-muji-text mt-4"></div>
+                        </div>
+
+                        <nav className="flex-1 px-4 space-y-1 mt-2 overflow-y-auto">
+                            {navItems.map((item) => {
+                                const IconComp = item.icon;
+                                const isActive = activeTab === item.id;
+                                return (
+                                    <button key={item.id} onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${isActive ? 'bg-muji-accent text-muji-accent-text' : 'text-muji-sub hover:bg-muji-bg hover:text-muji-text'}`}>
+                                        <IconComp size={16} />
+                                        <span className="tracking-wide">{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+
+                        {/* Settings Area */}
+                        <div className="p-4 border-t border-muji-line bg-muji-bg/30">
+                            {/* Font Selector */}
+                            <div className="mb-4">
+                                <label className="flex items-center gap-2 text-[10px] font-bold text-muji-sub mb-2 tracking-wider uppercase">
+                                    <TypeIcon size={12} /> 字體風格
+                                </label>
+                                <div className="relative select-wrapper">
+                                    <select value={currentFont} onChange={(e) => setCurrentFont(e.target.value)} className="w-full bg-muji-card text-muji-text text-xs font-medium p-2 rounded border border-muji-line appearance-none outline-none cursor-pointer">
+                                        {FONT_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            {/* Theme Selector */}
+                            <div>
+                                <label className="flex items-center gap-2 text-[10px] font-bold text-muji-sub mb-2 tracking-wider uppercase">
+                                    <PaletteIcon size={12} /> 主題配色
+                                </label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {THEME_OPTIONS.map(theme => (
+                                        <button 
+                                            key={theme.id}
+                                            onClick={() => setCurrentTheme(theme.id)}
+                                            className={`w-6 h-6 rounded-full theme-dot ring-2 ring-offset-1 ring-transparent mx-auto ${currentTheme === theme.id ? 'theme-active' : ''}`}
+                                            style={{ backgroundColor: theme.colors.accent }}
+                                            title={theme.label}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="flex-1 h-screen overflow-y-auto relative z-10 scroll-smooth bg-muji-bg">
+                        <div className="max-w-[1920px] mx-auto p-6 md:p-8 md:pt-12 pb-24">
+                            <header className="mb-8 md:ml-4">
+                                <h2 className="text-3xl font-light text-muji-text mb-2">{navItems.find(i => i.id === activeTab)?.label}</h2>
+                                <p className="text-sm text-muji-sub tracking-wide font-light">
+                                    IT Tools Collection & Calculator
+                                </p>
+                            </header>
+
+                            <div key={activeTab} className="animate-slideUp">
+                                {activeTab === 'storage' && <UnitConverter />}
+                                {activeTab === 'bandwidth' && <BandwidthCalculator />}
+                                {activeTab === 'ip' && <IpCalculator />}
+                                {activeTab === 'password' && <PasswordGenerator />}
+                                {activeTab === 'time' && <TimeConverter />}
+                                {activeTab === 'date' && <DateCalculator />}
+                                {activeTab === 'm365' && <M365Calculator />} 
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
