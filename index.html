@@ -152,7 +152,7 @@
         const SearchIcon = (p) => <Icon {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Icon>;
         const FileSpreadsheetIcon = (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><path d="M8 13h2" /><path d="M8 17h2" /><path d="M14 13h2" /><path d="M14 17h2" /></Icon>;
         const UploadCloudIcon = (p) => <Icon {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m16 16-4-4-4 4" /></Icon>;
-        const AlertCircleIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></Icon>; // Re-added for M365
+        const AlertCircleIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></Icon>;
 
         // --- Helper Function ---
         const calculateDaysDiff = (start, end) => {
@@ -250,27 +250,83 @@
             );
         };
 
-        // --- 功能 2: 時間換算 ---
+        // --- 功能 2: 時間換算 (Updated: Selectable Input Unit) ---
         const TimeConverter = () => {
-            const [hours, setHours] = useState(1);
+            const [inputValue, setInputValue] = useState(1);
+            const [inputUnit, setInputUnit] = useState('hours');
+
+            const TIME_OPTIONS = [
+                { value: 'hours', label: '小時 (Hours)' },
+                { value: 'minutes', label: '分鐘 (Minutes)' },
+                { value: 'seconds', label: '秒數 (Seconds)' },
+            ];
+
+            const getBaseSeconds = () => {
+                if (inputUnit === 'hours') return inputValue * 3600;
+                if (inputUnit === 'minutes') return inputValue * 60;
+                if (inputUnit === 'seconds') return inputValue;
+                return 0;
+            };
+
+            const baseSeconds = getBaseSeconds();
+
+            const displayData = [
+                { label: '小時 (hr)', val: baseSeconds / 3600 },
+                { label: '分鐘 (min)', val: baseSeconds / 60 },
+                { label: '秒數 (sec)', val: baseSeconds },
+                { label: '毫秒 (ms)', val: baseSeconds * 1000 },
+            ];
+
+            const formatVal = (num) => {
+                 if (num === 0) return '0';
+                 if (num < 0.000001 || num >= 1e15) return num.toExponential(4);
+                 // 避免出現過長的浮點數，但保留必要的精度
+                 const str = num.toLocaleString('zh-TW', { maximumFractionDigits: 6 });
+                 return str;
+            };
+
             return (
                 <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
                     <div className="bg-muji-card rounded-xl p-8 shadow-soft border border-muji-line">
-                        <div className="mb-8">
-                            <label className="text-xs font-bold text-muji-sub mb-2 block tracking-wider uppercase">輸入小時 (Hours)</label>
-                            <input type="number" value={hours} onChange={(e) => setHours(Number(e.target.value))} className="w-full bg-muji-input text-muji-text text-4xl font-light p-4 rounded-lg outline-none transition-all border-b-2 border-transparent focus:border-muji-sub"/>
+                        <div className="flex flex-col md:flex-row gap-6 items-center">
+                            <div className="flex-1 w-full">
+                                <label className="text-xs font-bold text-muji-sub mb-2 block tracking-wider uppercase">數值輸入</label>
+                                <input 
+                                    type="number" 
+                                    value={inputValue} 
+                                    onChange={(e) => setInputValue(Number(e.target.value))} 
+                                    className="w-full bg-muji-input text-muji-text text-4xl font-light p-4 rounded-lg outline-none transition-all border-b-2 border-transparent focus:border-muji-sub"
+                                />
+                            </div>
+                            <div className="text-muji-sub hidden md:block pt-6"><ArrowRightLeftIcon className="w-5 h-5" /></div>
+                            <div className="w-full md:w-56">
+                                <SelectField 
+                                    label="輸入單位" 
+                                    value={inputUnit} 
+                                    onChange={(e) => setInputUnit(e.target.value)} 
+                                    options={TIME_OPTIONS} 
+                                />
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                            {['分鐘', '秒數', '毫秒'].map((label, i) => {
-                                const val = i === 0 ? hours * 60 : i === 1 ? hours * 3600 : hours * 3600000;
-                                return (
-                                    <div key={label} className="border-t pt-4 border-muji-line">
-                                        <div className="text-muji-sub text-xs font-bold mb-1 tracking-wider">{label}</div>
-                                        <div className="text-2xl text-muji-text font-mono">{val.toLocaleString()}</div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {displayData.map((item) => {
+                            // 判斷是否為來源單位 (用於高亮顯示)
+                            const isSource = 
+                                (inputUnit === 'hours' && item.label.includes('小時')) ||
+                                (inputUnit === 'minutes' && item.label.includes('分鐘')) ||
+                                (inputUnit === 'seconds' && item.label.includes('秒數'));
+
+                            return (
+                                <div key={item.label} className={`relative rounded-lg p-6 border transition-all duration-300 ${isSource ? 'bg-muji-accent text-muji-accent-text border-muji-accent shadow-lg' : 'bg-muji-card text-muji-text border-transparent hover:border-muji-line hover:shadow-soft'}`}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className={`text-xs font-bold tracking-widest ${isSource ? 'opacity-80' : 'text-muji-sub'}`}>{item.label}</span>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div className="text-xl md:text-2xl font-mono truncate" title={item.val}>{formatVal(item.val)}</div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             );
